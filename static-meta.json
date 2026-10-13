@@ -1,0 +1,16 @@
+{
+  "meta": {
+    "campaign": "HOMECARE 33",
+    "team": "SIH Miền Bắc - OneHousing",
+    "sourceSheetUrl": "https://docs.google.com/spreadsheets/d/1XyNcrpYsXEns2wOqvO5IibtkxuOj-NyGURljeOpneR8/edit",
+    "sheetTab": "Homecare33",
+    "campaignStart": "2026-10-01",
+    "phase2Start": "2026-10-16",
+    "phase1RankCutoff": "2026-10-15",
+    "campaignEnd": "2026-11-15",
+    "timezone": "Asia/Saigon"
+  },
+  "priorityOrder": ["PA-03", "PA-05", "PA-08", "PA-09", "PA-13", "PA-27", "PA-30"],
+  "sources": ["TCB", "OM", "MH"],
+  "sourceLabels": {"TCB": "Techcombank (TCB)", "OM": "One Mount Group (OMG)", "MH": "Masterise Homes (MH)"}
+}
