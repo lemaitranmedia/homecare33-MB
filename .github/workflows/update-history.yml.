@@ -1,0 +1,92 @@
+name: Cập nhật lịch sử HomeCare 33
+
+on:
+  schedule:
+    # 01:12 UTC = 08:12 sáng giờ Việt Nam, hằng ngày.
+    # Cố tình KHÔNG đặt đúng phút :00 — GitHub khuyến nghị tránh phút tròn vì
+    # đó là lúc hàng loạt workflow trên toàn thế giới cùng chạy, dễ bị xếp hàng
+    # trễ 10-30 phút. Đặt lệch phút thì thực tế lại chạy gần 8h hơn.
+    # Lần chạy này là LẦN DỰ PHÒNG: nếu ngày hôm qua chưa có dòng lịch sử (lần 23:35 bị lỡ) thì
+    # đóng dấu vào ngày HÔM QUA; nếu đã có thì bỏ qua, không ghi đè (xem DATE_MODE=close).
+    - cron: '12 1 * * *'
+    # 16:35 UTC = 23:35 tối giờ Việt Nam, hằng ngày. ĐÂY LÀ LẦN CHỐT CHÍNH: lúc này chưa ai nhập
+    # số của ngày hôm sau, nên số trên sheet là số CUỐI NGÀY thật; chạy trễ qua nửa đêm vẫn đóng
+    # dấu đúng ngày vừa kết thúc (xem DATE_MODE=close).
+    - cron: '35 16 * * *'
+
+  # Chạy tay (adhoc). CHỈ người có quyền ghi vào repo mới bấm được nút này,
+  # kể cả khi repo để công khai — người ngoài xem được lịch sử chạy nhưng
+  # không kích hoạt được.
+  workflow_dispatch:
+    inputs:
+      date_mode:
+        description: 'Đóng dấu số vào ngày nào?'
+        required: true
+        default: 'today'
+        type: choice
+        options:
+          - today
+          - yesterday
+          - close
+      force:
+        description: 'Cho phép GHI ĐÈ dòng của ngày đã khóa (chỉ dùng khi cần sửa số cố ý)'
+        required: false
+        default: false
+        type: boolean
+
+  # (Tuỳ chọn, nâng cao) Cho phép kích hoạt từ bên ngoài bằng API —
+  # ví dụ Google Apps Script tự gọi mỗi khi sheet có thay đổi.
+  # Xem optional-google-apps-script.gs.
+  repository_dispatch:
+    types: [update-history]
+
+permissions:
+  contents: write
+  pages: write
+
+concurrency:
+  group: update-history
+  cancel-in-progress: false
+
+jobs:
+  update-history:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Fetch sheet & cập nhật history.json
+        env:
+          # Chạy theo lịch (23:35 chính, 08:12 dự phòng) -> chế độ close: tự chọn đúng ngày vừa kết thúc.
+          # Chạy tay -> theo lựa chọn khi bấm nút, mặc định là hôm nay.
+          # Gọi qua API -> mặc định hôm nay.
+          DATE_MODE: ${{ github.event_name == 'schedule' && 'close' || (github.event.inputs.date_mode || 'today') }}
+          # Ngày đã khóa chỉ bị ghi đè khi tick ô force lúc chạy tay.
+          FORCE: ${{ github.event.inputs.force || 'false' }}
+        run: node scripts/update-history.mjs
+
+      - name: Commit & push nếu có thay đổi
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add history.json
+          if git diff --staged --quiet; then
+            echo "Không có thay đổi so với lần chạy trước — bỏ qua commit."
+          else
+            git commit -m "chore: cập nhật history.json ($(TZ=Asia/Ho_Chi_Minh date +'%Y-%m-%d %H:%M') giờ VN)"
+            git pull --rebase origin "${GITHUB_REF_NAME}"
+            git push
+          fi
+
+      # Commit do GITHUB_TOKEN tạo ra đôi khi KHÔNG tự kích hoạt bản dựng GitHub Pages, khiến trang
+      # vẫn phục vụ history.json cũ. Bước này chủ động yêu cầu Pages dựng lại. Nếu repo không dùng
+      # Pages theo kiểu "Deploy from a branch" hoặc thiếu quyền thì bước này chỉ báo cảnh báo, KHÔNG làm
+      # hỏng lần chạy (lịch sử đã được commit ở bước trên).
+      - name: Yêu cầu GitHub Pages dựng lại
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh api -X POST "repos/${{ github.repository }}/pages/builds"
