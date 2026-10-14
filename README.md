@@ -9,7 +9,7 @@ Có 3 lớp, phục vụ 3 mục đích khác nhau:
 | Lớp | Cập nhật cái gì | Khi nào chạy | Ai kích hoạt được |
 |---|---|---|---|
 | **Đọc trực tiếp (live fetch)** | Toàn bộ số hiển thị trên trang | Mỗi lần mở/tải lại trang, và tự động mỗi 5 phút với tab để mở sẵn | Tự động, không cần ai |
-| **Lịch sáng hằng ngày** | Ghi 1 dòng lịch sử vào `history.json` (đóng dấu ngày **hôm qua**) | ~08:12 sáng giờ VN, tự động mỗi ngày | Tự động (GitHub Actions) |
+| **Chốt cuối ngày (lịch chính)** | Ghi 1 dòng lịch sử vào `history.json` cho **ngày vừa kết thúc** và **khóa cứng** dòng đó | ~23:35 tối giờ VN, tự động mỗi ngày (+ lần dự phòng ~08:12 sáng) | Tự động (GitHub Actions) |
 | **Chạy tay (adhoc)** | Ghi/ghi đè 1 dòng lịch sử | Bất cứ lúc nào bạn muốn | **Chỉ người có quyền ghi vào repo** |
 
 **Điểm quan trọng:** số trên dashboard **luôn là số mới nhất của sheet**, không phải chờ tới 8h sáng. Sheet vừa sửa xong, ai mở trang (hoặc bấm nút *Làm mới*) là thấy ngay. `history.json` chỉ phục vụ phần so sánh theo ngày (cột "Hot hôm nay" và biểu đồ *Diễn biến theo ngày*) — vì bản thân Google Sheet chỉ lưu số cộng dồn hiện tại, không lưu lịch sử.
@@ -21,7 +21,9 @@ Hai điều kiện để lịch tự chạy được, theo tài liệu GitHub:
 - Workflow phải nằm trên **nhánh mặc định**. Để ở nhánh khác thì lịch **không** kích hoạt.
 - Lịch bị **tự động tắt sau 60 ngày repo không có hoạt động** (hoạt động = push commit, mở pull request, hoặc tạo issue). Chiến dịch này kết thúc 15/11 nên chưa chạm mốc đó, nhưng nếu dùng lâu dài thì cần lưu ý.
 
-**Vì sao lịch sáng lại đóng dấu ngày hôm qua:** lúc 8h sáng chưa ai nhập số mới trong ngày, nên số đang có trên sheet chính là số **chốt** của ngày hôm qua. Đóng dấu như vậy để mỗi dòng lịch sử là số cuối ngày thật, không phải số dở dang buổi sáng. Còn ngày hôm nay thì trang tự lấy số live, luôn đúng.
+**Vì sao chốt lúc 23:35 tối:** lúc đó chưa ai nhập số của ngày hôm sau, nên số trên sheet chính là số **cuối ngày** thật. Chạy trễ qua nửa đêm vẫn đóng dấu đúng ngày vừa kết thúc (chế độ `close` chọn ngày theo giờ chạy: từ 12:00 trở đi là hôm nay, trước 12:00 là hôm qua). Lần chạy dự phòng 08:12 sáng chỉ có tác dụng khi lần 23:35 bị lỡ; nếu ngày hôm qua đã có dòng thì bỏ qua, không ghi đè. Còn ngày hôm nay thì trang tự lấy số live, luôn đúng.
+
+**Khóa cứng:** dòng lịch sử của mọi ngày trước hôm nay, một khi đã có trong `history.json`, sẽ **không bao giờ bị ghi đè** — kể cả khi chị nhập số mới vào sheet từ sáng hôm sau. Nhờ đó cột "Hot hôm nay" luôn so với số cuối ngày hôm trước. Chỉ có hai trường hợp được ghi đè: (1) dòng của đúng ngày hôm nay (chốt nhiều lần trong ngày); (2) tick ô **force** khi bấm *Run workflow* để sửa số cố ý.
 
 **Ghi đè, không cộng dồn nhiều dòng/ngày:** mỗi ngày chỉ có tối đa 1 dòng trong `history.json`. Chạy lại nhiều lần trong cùng một ngày thì dòng của ngày đó bị ghi đè bằng số mới nhất.
 
@@ -33,7 +35,7 @@ Hai điều kiện để lịch tự chạy được, theo tài liệu GitHub:
 | `parse-homecare33.mjs` | Logic đọc & tách số từ CSV của Google Sheet. Dùng chung cho cả trang web lẫn script tự động, để hai bên không bao giờ lệch nhau. |
 | `static-meta.json` | Thông tin ít đổi: tên chiến dịch, các mốc thời gian, nhãn nguồn. |
 | `history.json` | Lịch sử theo ngày (bắt đầu trống cho chiến dịch Miền Bắc; dữ liệu Miền Nam cũ lưu ở `history-MN-archive.json`). GitHub Actions sẽ tự nối thêm. |
-| `.github/workflows/update-history.yml` | Lịch 08:00 + nút chạy tay + cổng gọi qua API. |
+| `.github/workflows/update-history.yml` | Lịch chốt 23:35 (chính) + 08:12 (dự phòng) + nút chạy tay + cổng gọi qua API. Sau khi commit, tự yêu cầu GitHub Pages dựng lại. |
 | `scripts/update-history.mjs` | Script mà workflow chạy. |
 | `optional-google-apps-script.gs` | **Tuỳ chọn**, không bắt buộc. Xem phần cuối. |
 
@@ -51,7 +53,10 @@ Hai điều kiện để lịch tự chạy được, theo tài liệu GitHub:
 Vào repo → tab **Actions** → chọn workflow **"Cập nhật lịch sử HomeCare 33"** ở cột trái → nút **Run workflow** bên phải → chọn:
 
 - `today` — chốt số hiện tại thành dòng lịch sử của **hôm nay** (dùng khi muốn ghim mốc giữa ngày).
-- `yesterday` — chốt số hiện tại thành dòng lịch sử của **hôm qua** (dùng khi lần chạy 8h sáng bị lỗi và cần chạy bù).
+- `yesterday` — chốt số hiện tại thành dòng lịch sử của **hôm qua** (dùng khi cần chạy bù; nếu hôm qua đã khóa thì bị bỏ qua trừ khi tick **force**).
+- `close` — tự chọn đúng ngày vừa kết thúc theo giờ chạy (cách lịch tự động đang dùng).
+
+Ô **force**: chỉ tick khi muốn cố ý **ghi đè** dòng của một ngày đã khóa.
 
 → bấm **Run workflow**. Khoảng 30–60 giây sau là xong.
 
