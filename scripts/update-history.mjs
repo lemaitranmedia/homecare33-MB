@@ -10,7 +10,15 @@
 //                           số CHỐT của ngày hôm qua)
 //   DATE_MODE=today      -> đóng dấu ngày HÔM NAY (dùng khi bấm chạy tay giữa ngày
 //                           để chốt số ngay tại thời điểm đó)
+//   DATE_MODE=close      -> CHỐT CUỐI NGÀY (dùng cho lịch chạy 23:35 và lịch dự phòng 08:12):
+//                           chạy từ 12:00 trở đi (giờ VN) thì đóng dấu HÔM NAY; chạy trước 12:00
+//                           (ví dụ GitHub chạy trễ qua nửa đêm, hoặc lần dự phòng 08:12) thì đóng dấu
+//                           HÔM QUA. Nhờ vậy dù lịch bị trễ thì số vẫn rơi đúng vào ngày vừa kết thúc.
 // Mặc định: today.
+//
+// KHÓA CỨNG: mọi dòng lịch sử có ngày TRƯỚC hôm nay (giờ VN) đã tồn tại thì KHÔNG bị ghi đè nữa,
+// dù chạy chế độ nào. Chỉ dòng của đúng ngày hôm nay mới được ghi đè (để chốt nhiều lần trong ngày).
+// Muốn cố tình sửa số một ngày đã khóa: đặt FORCE=true (trên GitHub: ô "force" khi bấm Run workflow).
 //
 // Thoát với mã lỗi khác 0 nếu có bất kỳ vấn đề gì — để lần chạy hiện đỏ trên
 // GitHub thay vì âm thầm commit số sai.
@@ -22,16 +30,31 @@ import { parseCsv, extractSnapshot, todaySaigon, yesterdaySaigon, csvUrl } from 
 const SHEET_ID = '1XyNcrpYsXEns2wOqvO5IibtkxuOj-NyGURljeOpneR8';
 const SHEET_TAB = 'Homecare33';
 
+// Giờ hiện tại (0-23) theo Asia/Saigon, không phụ thuộc múi giờ máy chạy.
+function hourSaigon() {
+  return Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Saigon', hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const HISTORY_PATH = join(__dirname, '..', 'history.json');
 
 async function main() {
   const mode = (process.env.DATE_MODE || 'today').trim();
-  if (mode !== 'today' && mode !== 'yesterday') {
-    throw new Error('DATE_MODE không hợp lệ: "' + mode + '" (chỉ chấp nhận "today" hoặc "yesterday").');
+  if (mode !== 'today' && mode !== 'yesterday' && mode !== 'close') {
+    throw new Error('DATE_MODE không hợp lệ: "' + mode + '" (chỉ chấp nhận "today", "yesterday" hoặc "close").');
   }
-  const stampDate = mode === 'yesterday' ? yesterdaySaigon() : todaySaigon();
+  const force = (process.env.FORCE || 'false').trim().toLowerCase() === 'true';
+  let stampDate;
+  if (mode === 'yesterday') stampDate = yesterdaySaigon();
+  else if (mode === 'close') stampDate = hourSaigon() >= 12 ? todaySaigon() : yesterdaySaigon();
+  else stampDate = todaySaigon();
   console.log('DATE_MODE=' + mode + ' -> đóng dấu vào ngày ' + stampDate + ' (giờ Việt Nam).');
+
+  const historyBefore = JSON.parse(readFileSync(HISTORY_PATH, 'utf8'));
+  if (!force && stampDate < todaySaigon() && historyBefore.some(h => h.date === stampDate)) {
+    console.log('Ngày ' + stampDate + ' ĐÃ ĐƯỢC KHÓA trong history.json — giữ nguyên, không ghi đè. (Muốn sửa cố ý: FORCE=true.)');
+    return;
+  }
 
   const res = await fetch(csvUrl(SHEET_ID, SHEET_TAB));
   if (!res.ok) {
